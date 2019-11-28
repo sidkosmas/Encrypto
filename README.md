@@ -49,3 +49,9 @@ To run it:
 Reminder: To leave the virtual environment
 
     $ deactivate
+    
+Create the venv on each OS:
+
+    $ python -m venv env
+    $ source env/bin/activate
+    $ pip install -r requirements.txt
