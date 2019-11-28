@@ -123,6 +123,7 @@ def password_verification(mode: str) -> bytearray:
     bytearray
         the password with leading zeros
     """
+    password1 = ""
     try:
         password1 = str(input("Enter passphrase > "))
         if mode == 'e' or mode == 'e+':
@@ -142,11 +143,21 @@ def password_verification(mode: str) -> bytearray:
                        'numbers: 0-9\n'
                        'any of the special characters: @#$%^&+=\n'))
                 exit(1)
-
-            return hashlib.sha256(password1.encode("utf-8")).digest()
     except KeyboardInterrupt:
         print(sys.argv[0] + ' canceled by user')
         exit(1)
+
+    return hashlib.sha256(password1.encode("utf-8")).digest()
+
+
+def throw_warning():
+    """"""
+    print("Warning! Encrypted files should end with '" + EXT + "'")
+    yes_no = str(input("Do you wish to continue [Y/n] > ")).strip(' \t\n').lower()
+    if yes_no not in ['', 'y', 'yes']:
+        print("Operation canceled by user.")
+        exit(1)
+
 
 def process_args():
     """Arguments define if a directory will be decrypted or encrypted by
@@ -219,8 +230,7 @@ def process_files(key, mode, path):  # todo : support sub-directories too
                 print("Encrypting " + file + " to " + file + EXT)
                 encrypt_file(key, file)
             elif file[-5:] != EXT:
-                print("'" + file[-5:] + "' : '" + EXT + "'")
-                print("Warning! Encrypted files should end with '" + EXT + "'")
+                throw_warning()
                 print("Decrypting '" + file + "' to '" + file + "_decrypted_copy'")
                 decrypt_file(key, file, file + "_decrypted_copy")
             else:
@@ -231,6 +241,7 @@ def process_files(key, mode, path):  # todo : support sub-directories too
     f = []
     for (dir_path, dir_names, filenames) in walk(path[0]):
         f.extend(filenames)
+        f = [enc_file for enc_file in f if enc_file.endswith(EXT)]
         break
 
     for file in f:
@@ -249,7 +260,7 @@ def process_files(key, mode, path):  # todo : support sub-directories too
             print("Decrypting " + in_file + " to " + out_file)
             decrypt_file(key, in_file, out_file)
         else:
-            print("Warning! Encrypted files should end with '" + EXT + "'")
+            throw_warning()
             print("Decrypting '" + file + "' to '" + file + "_decrypted_copy'")
             decrypt_file(key, in_file, in_file + "_decrypted_copy")
 
@@ -258,8 +269,13 @@ def main():
     print("Default extension: '" + EXT + "'")
     mode, path = process_args()
     key = password_verification(mode)
-    process_files(key, mode, path)
-
+    try:
+        process_files(key, mode, path)
+    except ValueError:
+        if mode == 'd' or mode == 'd+':
+            print('Decryption failed....')
+        else:
+            print('Encryption failed....')
 
 if __name__ == '__main__':
     main()
