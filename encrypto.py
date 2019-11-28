@@ -9,6 +9,8 @@ from Crypto.Random import get_random_bytes
 import hashlib
 import re
 
+EXT = ".enc2"
+
 
 def encrypt_file(key, in_filename, out_filename=None, chunk_size=64 * 1024):
     """Encrypts a file using AES (CBC mode) with the given key.
@@ -33,7 +35,7 @@ def encrypt_file(key, in_filename, out_filename=None, chunk_size=64 * 1024):
         chunk-size must be divisible by 16.
     """
     if not out_filename:
-        out_filename = in_filename + '.enc'
+        out_filename = in_filename + EXT
 
     try:
         iv = get_random_bytes(AES.block_size)
@@ -121,27 +123,30 @@ def password_verification(mode: str) -> bytearray:
     bytearray
         the password with leading zeros
     """
-    password1 = str(input("Enter passphrase > "))
-    if mode == 'e' or mode == 'e+':
-        password2 = str(input("Re-enter passphrase > "))
-        if password1 != password2:
-            print("Passwords don't match. Terminating...")
-            exit(1)
+    try:
+        password1 = str(input("Enter passphrase > "))
+        if mode == 'e' or mode == 'e+':
+            password2 = str(input("Re-enter passphrase > "))
+            if password1 != password2:
+                print("Passwords don't match. Terminating...")
+                exit(1)
 
-        if not re.match(r'[A-Za-z0-9@#$%^&+=]{5,}', password1):
-            print(('\n'
-                   'Invalid password format!\n'
-                   'At least 5 characters\n'
-                   '\n'
-                   'Must be restricted to, though does not specifically require any of:\n'
-                   'uppercase letters: A-Z\n'
-                   'lowercase letters: a-z\n'
-                   'numbers: 0-9\n'
-                   'any of the special characters: @#$%^&+=\n'))
-            exit(1)
+            if not re.match(r'[A-Za-z0-9@#$%^&+=]{5,}', password1):
+                print(('\n'
+                       'Invalid password format!\n'
+                       'At least 5 characters\n'
+                       '\n'
+                       'Must be restricted to, though does not specifically require any of:\n'
+                       'uppercase letters: A-Z\n'
+                       'lowercase letters: a-z\n'
+                       'numbers: 0-9\n'
+                       'any of the special characters: @#$%^&+=\n'))
+                exit(1)
 
-    return hashlib.sha256(password1.encode("utf-8")).digest()
-
+            return hashlib.sha256(password1.encode("utf-8")).digest()
+    except KeyboardInterrupt:
+        print(sys.argv[0] + ' canceled by user')
+        exit(1)
 
 def process_args():
     """Arguments define if a directory will be decrypted or encrypted by
@@ -211,11 +216,16 @@ def process_files(key, mode, path):  # todo : support sub-directories too
     if mode == 'd+' or mode == 'e+':
         for file in path:
             if mode == 'e+':
-                print("Encrypting " + file + " to " + file + ".enc")
+                print("Encrypting " + file + " to " + file + EXT)
                 encrypt_file(key, file)
+            elif file[-5:] != EXT:
+                print("'" + file[-5:] + "' : '" + EXT + "'")
+                print("Warning! Encrypted files should end with '" + EXT + "'")
+                print("Decrypting '" + file + "' to '" + file + "_decrypted_copy'")
+                decrypt_file(key, file, file + "_decrypted_copy")
             else:
-                print("Decrypting " + file + " to " + file[:-4])
-                decrypt_file(key, file, file[:-4])
+                print("Decrypting '" + file + "' to '" + file[:-5] + "'")
+                decrypt_file(key, file, file[:-5])
         return
 
     f = []
@@ -229,19 +239,23 @@ def process_files(key, mode, path):  # todo : support sub-directories too
         ext = '.' + parts[len(parts) - 1]
 
         in_file = os.path.join(path[0], file)
-        out_file = os.path.join(path[0], file[:-4])  # For decryption only
 
         if mode == 'e':
-            if ext != '.enc':
-                print("Encrypting " + in_file + " to " + in_file + ".enc")
+            if ext != EXT:
+                print("Encrypting '" + in_file + "' to '" + in_file + EXT + "'")
                 encrypt_file(key, in_file)
+        elif ext == EXT:
+            out_file = os.path.join(path[0], file[:-5])  # For decryption only
+            print("Decrypting " + in_file + " to " + out_file)
+            decrypt_file(key, in_file, out_file)
         else:
-            if ext == '.enc':
-                print("Decrypting " + in_file + " to " + out_file)
-                decrypt_file(key, in_file, out_file)
-
+            print("Warning! Encrypted files should end with '" + EXT + "'")
+            print("Decrypting '" + file + "' to '" + file + "_decrypted_copy'")
+            decrypt_file(key, in_file, in_file + "_decrypted_copy")
 
 def main():
+    print("Security: Random IV and sha256 hashed passwords")
+    print("Default extension: '" + EXT + "'")
     mode, path = process_args()
     key = password_verification(mode)
     process_files(key, mode, path)
