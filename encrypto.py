@@ -41,6 +41,7 @@ def encrypt_file(key, in_filename, out_filename=None, chunk_size=64 * 1024):
         iv = get_random_bytes(AES.block_size)
         encryptor = AES.new(key, AES.MODE_CBC, iv)
         file_size = os.path.getsize(in_filename)
+        progress_bar = ProgressBar(file_size)
 
         with open(in_filename, 'rb') as infile:
             with open(out_filename, 'wb') as outfile:
@@ -55,8 +56,13 @@ def encrypt_file(key, in_filename, out_filename=None, chunk_size=64 * 1024):
                         chunk += b' ' * (16 - len(chunk) % 16)
 
                     outfile.write(encryptor.encrypt(chunk))
+                    progress_bar.update(chunk_size)
+                progress_bar.close()
     except FileNotFoundError:
         print("File '" + in_filename + "' not found.")
+    except KeyboardInterrupt:
+        os.remove(out_filename)
+        print('Encryption canceled by user')
 
 
 def decrypt_file(key, in_filename, out_filename=None, chunk_size=24 * 1024):
@@ -91,6 +97,8 @@ def decrypt_file(key, in_filename, out_filename=None, chunk_size=24 * 1024):
             orig_size = struct.unpack('<Q', infile.read(struct.calcsize('Q')))[0]
             iv = infile.read(16)
             decrypter = AES.new(key, AES.MODE_CBC, iv)
+            file_size = os.path.getsize(in_filename)
+            progress_bar = ProgressBar(file_size)
 
             with open(out_filename, 'wb') as outfile:
                 while True:
@@ -98,10 +106,14 @@ def decrypt_file(key, in_filename, out_filename=None, chunk_size=24 * 1024):
                     if len(chunk) == 0:
                         break
                     outfile.write(decrypter.decrypt(chunk))
-
+                    progress_bar.update(chunk_size)
+                progress_bar.close()
                 outfile.truncate(orig_size)
     except FileNotFoundError:
         print("File '" + in_filename + "' not found.")
+    except KeyboardInterrupt:
+        os.remove(out_filename)
+        print("Decryption canceled by user")
 
 
 def password_verification(mode: str) -> bytearray:
@@ -241,7 +253,8 @@ def process_files(key, mode, path):  # todo : support sub-directories too
     f = []
     for (dir_path, dir_names, filenames) in walk(path[0]):
         f.extend(filenames)
-        f = [enc_file for enc_file in f if enc_file.endswith(EXT)]
+        if mode == 'd' or mode == 'd+':
+            f = [enc_file for enc_file in f if enc_file.endswith(EXT)]
         break
 
     for file in f:
@@ -264,6 +277,32 @@ def process_files(key, mode, path):  # todo : support sub-directories too
             print("Decrypting '" + file + "' to '" + file + "_decrypted_copy'")
             decrypt_file(key, in_file, in_file + "_decrypted_copy")
 
+
+class ProgressBar:
+    """tqdm wrapper In case module is missing, script execution continues without a progress bar"""
+    chunk_enable = 50
+
+    def __init__(self, file_size):
+        if file_size > ProgressBar.chunk_enable * 24 * 1024:
+            try:
+                from tqdm import tqdm
+            except ImportError:
+                self.progress_bar = None
+                return
+            self.progress_bar = tqdm(total=file_size, unit_scale=True)
+        else:
+            self.progress_bar = None
+
+    def update(self, amount):
+        if self.progress_bar is not None:
+            self.progress_bar.update(amount)
+
+    def close(self):
+        if self.progress_bar is not None:
+            self.progress_bar.close()
+            print()
+
+
 def main():
     print("Security: Random IV and sha256 hashed passwords")
     print("Default extension: '" + EXT + "'")
@@ -276,6 +315,7 @@ def main():
             print('Decryption failed....')
         else:
             print('Encryption failed....')
+
 
 if __name__ == '__main__':
     main()
