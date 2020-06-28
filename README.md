@@ -1,9 +1,15 @@
 Usage
 =
-
-    Usage: python encrypto.py [-d] [<file>...]
+    usage: encrypto.py [-h] [-e] [-d] [-c] [-f FILE [FILE ...]]
+    Encrypto arguments
     
-    -d      decrypt
+    optional arguments:
+      -h, --help            show this help message and exit
+      -e, --encrypt         encrypt a file. (Default option)
+      -d, --decrypt         decrypt a file.
+      -c, --console         displays decrypted content to console.
+      -f FILE [FILE ...], --file FILE [FILE ...]
+                            the file that's going to be processed
 
 Setup guide
 =
@@ -23,14 +29,14 @@ To run it:
 Virtualenv
 -
 
+Create the venv on each OS:
+
+    $ python3 -m venv venv
+    $ source venv/bin/activate
+    $ venv/bin/pip install -r requirements.txt
+    (venv) $ python encrypto.py             #Optional... Test script
+    $ deactivate
+
 To run it:
     
     $ venv/bin/python encrypto.py
-    
-Create the venv on each OS:
-
-    $ python -m venv env
-    $ source env/bin/activate
-    $ pip install -r requirements.txt
-    (venv) $ python encrypto.py             #Optional... Test script
-    $ deactivate
