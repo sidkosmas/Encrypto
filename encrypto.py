@@ -8,6 +8,7 @@ import sys
 from Crypto.Random import get_random_bytes
 import hashlib
 import re
+import argparse
 
 EXT = ".enc2"
 
@@ -65,7 +66,7 @@ def encrypt_file(key, in_filename, out_filename=None, chunk_size=64 * 1024):
         print('Encryption canceled by user')
 
 
-def decrypt_file(key, in_filename, out_filename=None, chunk_size=24 * 1024):
+def decrypt_file(key, in_filename, console, out_filename=None, chunk_size=24 * 1024):
     """Decrypts a file using AES (CBC mode) with the
     given key. Parameters are similar to encrypt_file,
     with one difference: out_filename, if not supplied
@@ -81,6 +82,8 @@ def decrypt_file(key, in_filename, out_filename=None, chunk_size=24 * 1024):
         are more secure.
     in_filename : str
         the name of the file to be processed.
+    console : bool
+        echo contents to console instead of writing them to a file.
     out_filename : str
         the output file name
     chunk_size : int
@@ -91,24 +94,31 @@ def decrypt_file(key, in_filename, out_filename=None, chunk_size=24 * 1024):
     """
     if not out_filename:
         out_filename = os.path.splitext(in_filename)[0]
-
     try:
         with open(in_filename, 'rb') as infile:
             orig_size = struct.unpack('<Q', infile.read(struct.calcsize('Q')))[0]
             iv = infile.read(16)
             decrypter = AES.new(key, AES.MODE_CBC, iv)
             file_size = os.path.getsize(in_filename)
-            progress_bar = ProgressBar(file_size)
-
-            with open(out_filename, 'wb') as outfile:
+            buffer = bytearray()
+            if console:
                 while True:
                     chunk = infile.read(chunk_size)
                     if len(chunk) == 0:
                         break
-                    outfile.write(decrypter.decrypt(chunk))
-                    progress_bar.update(chunk_size)
-                progress_bar.close()
-                outfile.truncate(orig_size)
+                    buffer += decrypter.decrypt(chunk)
+                print(buffer.decode("utf-8"))
+            else:
+                progress_bar = ProgressBar(file_size)
+                with open(out_filename, 'wb') as outfile:
+                    while True:
+                        chunk = infile.read(chunk_size)
+                        if len(chunk) == 0:
+                            break
+                        outfile.write(decrypter.decrypt(chunk))
+                        progress_bar.update(chunk_size)
+                    progress_bar.close()
+                    outfile.truncate(orig_size)
     except FileNotFoundError:
         print("File '" + in_filename + "' not found.")
     except KeyboardInterrupt:
@@ -171,54 +181,7 @@ def throw_warning():
         exit(1)
 
 
-def process_args():
-    """Arguments define if a directory will be decrypted or encrypted by
-    adding or ignoring option '-d'.
-    You can also specify files (encrypt/decrypt) by adding relative/full paths
-    at the end.
-
-    Returns
-    -------
-    str
-        e for dir encryption
-        e+ for specific file(s) encryption
-        d for dir decryption
-        d+ for specific file(s) decryption
-    list
-        a list of path files to be encrypted/decrypted.
-    """
-    path = ['.']
-    mode = 'e'  # Default is encryption
-
-    if len(sys.argv) <= 1:
-        path[0] = input('Enter a valid folder with files to encrypt > ')
-        if path[0].strip(' \t\n') == '':
-            path[0] = '.'
-        elif os.path.exists(path[0]) is False:
-            print("Invalid path: '" + path[0] + "'")
-            exit(1)
-    elif sys.argv[1] == "-d" and len(sys.argv) <= 2:
-        path[0] = input('Enter a valid folder with files to decrypt > ')
-        if path[0].strip(' \t\n') == '':
-            path[0] = '.'
-        elif os.path.exists(path[0]) is False:
-            print("Invalid path: '" + path[0] + "'")
-            exit(1)
-        mode = 'd'
-    else:
-        first_file = 1  # ignore option '-d'
-        if sys.argv[1] == '-d':
-            mode = 'd+'
-            first_file = 2
-        else:
-            mode = 'e+'
-        path.clear()
-        for file_no in range(first_file, len(sys.argv)):
-            path.append(sys.argv[file_no])
-    return mode, path
-
-
-def process_files(key, mode, path):  # todo : support sub-directories too
+def process_files(key, mode, path, console):  # todo : support sub-directories too
     """Encrypts the whole directory IGNORING SUBDIRECTORIES
     or just specific files defined in cmd argument's list.
 
@@ -244,10 +207,10 @@ def process_files(key, mode, path):  # todo : support sub-directories too
             elif file[-5:] != EXT:
                 throw_warning()
                 print("Decrypting '" + file + "' to '" + file + "_decrypted_copy'")
-                decrypt_file(key, file, file + "_decrypted_copy")
+                decrypt_file(key, file, console, file + "_decrypted_copy")
             else:
                 print("Decrypting '" + file + "' to '" + file[:-5] + "'")
-                decrypt_file(key, file, file[:-5])
+                decrypt_file(key, file, console, file[:-5])
         return
 
     f = []
@@ -271,11 +234,11 @@ def process_files(key, mode, path):  # todo : support sub-directories too
         elif ext == EXT:
             out_file = os.path.join(path[0], file[:-5])  # For decryption only
             print("Decrypting " + in_file + " to " + out_file)
-            decrypt_file(key, in_file, out_file)
+            decrypt_file(key, in_file, console, out_file)
         else:
             throw_warning()
             print("Decrypting '" + file + "' to '" + file + "_decrypted_copy'")
-            decrypt_file(key, in_file, in_file + "_decrypted_copy")
+            decrypt_file(key, in_file, console, in_file + "_decrypted_copy")
 
 
 class ProgressBar:
@@ -303,13 +266,59 @@ class ProgressBar:
             print()
 
 
+def process_args(args):
+    """
+    Processes given arguments.
+    Call script -h for argument information.
+    :param args: argparse object
+    :return: mode, path
+    """
+    mode = 'e'
+    path = ['.']
+
+    if args.decrypt:
+        mode = 'd'
+    if args.file is not None:
+        mode += '+'
+
+    if args.file is None:
+        if mode[0] == 'e':
+            path[0] = input('Enter a valid folder with files to encrypt > ')
+            if path[0].strip(' \t\n') == '':
+                path[0] = '.'
+            elif os.path.exists(path[0]) is False:
+                print("Invalid path: '" + path[0] + "'")
+                exit(1)
+        else:
+            path[0] = input('Enter a valid folder with files to decrypt > ')
+            if path[0].strip(' \t\n') == '':
+                path[0] = '.'
+            elif os.path.exists(path[0]) is False:
+                print("Invalid path: '" + path[0] + "'")
+                exit(1)
+    else:
+        path.clear()
+        for file in args.file:
+            path.append(file)
+    return mode, path
+
+
 def main():
     print("Security: Random IV and sha256 hashed passwords")
     print("Default extension: '" + EXT + "'")
-    mode, path = process_args()
+
+    parser = argparse.ArgumentParser(description="Encrypto arguments")
+    parser.add_argument('-e', '--encrypt', action='store_true', help='encrypt a file. (Default option)')
+    parser.add_argument('-d', '--decrypt', action='store_true', help='decrypt a file.')
+    parser.add_argument('-c', '--console', action='store_true', help='displays decrypted content to console.')
+    parser.add_argument('-f', "--file", type=str, nargs='+', help='the file that\'s going to be processed')
+    args = parser.parse_args()
+    console = args.console
+
+    mode, path = process_args(args)
     key = password_verification(mode)
     try:
-        process_files(key, mode, path)
+        process_files(key, mode, path, console)
     except ValueError:
         if mode == 'd' or mode == 'd+':
             print('Decryption failed....')
